@@ -3,22 +3,43 @@ import earthaccess                                 # 0.6.1
 
 # Analysis packages:
 import xarray as xr                                # 2023.9.0
-import numpy as np                                 # 1.26.0
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 # Visualization packages:
 import matplotlib.pyplot as plt                    # 3.8.0
 
 # Part 1: Authenticate, Locate IMERG data files, and load data
-earthaccess.login() # Login with your credentials
+auth = earthaccess.login(strategy="netrc") # works if the EDL login already been persisted to a netrc
+if not auth.authenticated:
+    # ask for EDL credentials and persist them in a .netrc file
+    auth = earthaccess.login(strategy="interactive", persist=True)
 
-# Locate data file information, which includes endpoints, on Earthdata Cloud:
+#TODO: Update for GPM IMERG Final Precipitation L3 Half Hourly 0.1 degree x 0.1 degree V07 (GPM_3IMERGHH) at GES DISC
+
+doi = '10.5067/GPM/IMERGDF/DAY/07' #IMERG
+
 precip_results = earthaccess.search_data(
-    short_name="GPM_3IMERGHH", # GPM IMERG Final Precipitation L3 Half Hourly 0.1 degree x 0.1 degree V07 (GPM_3IMERGHH) at GES DISC
     cloud_hosted=True,
-    bounding_box = ('-170','-70','100','0'), # Crossing International Dateline
-    temporal=("2023-02-01", "2023-03-01"), # Tropical Cyclone Gabrielle
+    doi=doi,
+    bounding_box = ('179','-70','150','-10'),
+    temporal=("2023-02-05", "2023-02-16"), # Tropical Cyclone Gabrielle
     )
 
-# Part 2
-#opens granules and load into xarray dataset
-ds = xr.open_mfdataset(earthaccess.open(precip_results), combine='nested', decode_times=False)
+file_handlers = earthaccess.open(precip_results)
+ds = xr.open_mfdataset(file_handlers, decode_coords="all")
+
+# Subset for Region of Interest
+ds['lon'] = ds.lon + 180
+ds_sub = ds.sel(lat=slice(-70, -10), lon=slice(100,200))
+
+# Plot
+fg = ds_sub.precipitation.plot(x='lon', y='lat',col='time', col_wrap=4,
+                          transform=ccrs.PlateCarree(),
+                          subplot_kws={"projection": ccrs.PlateCarree(central_longitude=180)},
+                          cbar_kwargs={"orientation": "horizontal", "shrink": 0.8, "aspect": 40},
+                          robust=True,
+)
+fg.map(lambda: plt.gca().coastlines())
+plt.tight_layout()
+plt.savefig('/Users/kluis/PycharmProjects/esf/figures/test_fig.png', dpi=300)
